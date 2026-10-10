@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>Treehouse Survival</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #24170d;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="treehouse-202610092022.icon.png" />
+<link rel="apple-touch-icon" href="treehouse-202610092022.apple-touch-icon.png"/>
+
+	<script id="TREEHOUSE_PORTRAIT_LOCK">
+/* Treehouse Survival - keep the game portrait on phones.
+ * iOS Safari cannot lock screen orientation. When a phone turns sideways, the
+ * canvas is counter-rotated so the game stays put against the device (like a
+ * portrait-locked app), Godot keeps seeing a portrait window, and touch/mouse
+ * coordinates are mapped back into the canvas's own portrait frame.
+ */
+(function () {
+	if (window.__treehousePortraitLock) {
+		return;
+	}
+	window.__treehousePortraitLock = true;
+
+	var wDesc = Object.getOwnPropertyDescriptor(window, 'innerWidth') || Object.getOwnPropertyDescriptor(Window.prototype, 'innerWidth');
+	var hDesc = Object.getOwnPropertyDescriptor(window, 'innerHeight') || Object.getOwnPropertyDescriptor(Window.prototype, 'innerHeight');
+	function realW() {
+		try {
+			return wDesc && wDesc.get ? wDesc.get.call(window) : document.documentElement.clientWidth;
+		} catch (e) {
+			return document.documentElement.clientWidth;
+		}
+	}
+	function realH() {
+		try {
+			return hDesc && hDesc.get ? hDesc.get.call(window) : document.documentElement.clientHeight;
+		} catch (e) {
+			return document.documentElement.clientHeight;
+		}
+	}
+
+	// 0 = upright; -90 / 90 = the canvas is turned that many degrees on screen.
+	var turn = 0;
+	var shortSide = 0;
+	var longSide = 0;
+	window.__treehouseTurn = function () { return turn; };
+
+	function phone() {
+		var touch = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
+		return touch && Math.min(realW(), realH()) <= 540;
+	}
+
+	// Phones render the canvas at most 2x: a 3x canvas pushes more than twice
+	// the pixels of 2x every frame and is the main source of heat.
+	var dprDesc = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio') || Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio');
+	function realDpr() {
+		try {
+			return dprDesc && dprDesc.get ? dprDesc.get.call(window) : 1;
+		} catch (e) {
+			return 1;
+		}
+	}
+	try {
+		Object.defineProperty(window, 'devicePixelRatio', {
+			configurable: true,
+			get: function () { var ratio = realDpr(); return phone() ? Math.min(ratio, 2) : ratio; },
+		});
+	} catch (e2) {}
+
+	function deviceAngle() {
+		if (typeof window.orientation === 'number') {
+			return window.orientation;
+		}
+		if (screen.orientation && typeof screen.orientation.angle === 'number') {
+			return screen.orientation.angle === 270 ? -90 : screen.orientation.angle;
+		}
+		return 90;
+	}
+
+	function apply() {
+		var canvas = document.getElementById('canvas');
+		if (!canvas) {
+			return false;
+		}
+		if (!canvas.__treehouseRect) {
+			var rect = canvas.getBoundingClientRect;
+			canvas.getBoundingClientRect = function () {
+				if (!turn) {
+					return rect.call(this);
+				}
+				return new DOMRect(0, 0, shortSide, longSide);
+			};
+			canvas.__treehouseRect = true;
+		}
+		if (!turn) {
+			canvas.style.transform = '';
+			canvas.style.transformOrigin = '';
+			return true;
+		}
+		canvas.style.position = 'fixed';
+		canvas.style.left = '0px';
+		canvas.style.top = '0px';
+		canvas.style.transformOrigin = '0 0';
+		canvas.style.transform = turn === -90
+			? 'translate(0px, ' + shortSide + 'px) rotate(-90deg)'
+			: 'translate(' + longSide + 'px, 0px) rotate(90deg)';
+		return true;
+	}
+
+	function update() {
+		var w = realW();
+		var h = realH();
+		shortSide = Math.min(w, h);
+		longSide = Math.max(w, h);
+		// Turned clockwise (top of the phone on the right) needs +90; otherwise -90.
+		turn = phone() && w > h ? (deviceAngle() === -90 ? 90 : -90) : 0;
+		return apply();
+	}
+
+	// Godot sizes its canvas from innerWidth/innerHeight every frame.
+	Object.defineProperty(window, 'innerWidth', {
+		configurable: true,
+		get: function () { return turn ? shortSide : realW(); },
+	});
+	Object.defineProperty(window, 'innerHeight', {
+		configurable: true,
+		get: function () { return turn ? longSide : realH(); },
+	});
+
+	// Screen point -> canvas portrait point. -90: (S - y, x). +90: (y, L - x).
+	function patchPoint(proto, xName, yName, relative) {
+		var dx = proto && Object.getOwnPropertyDescriptor(proto, xName);
+		var dy = proto && Object.getOwnPropertyDescriptor(proto, yName);
+		if (!dx || !dy || !dx.get || !dy.get) {
+			return;
+		}
+		Object.defineProperty(proto, xName, {
+			configurable: true,
+			enumerable: dx.enumerable,
+			get: function () {
+				var x = dx.get.call(this);
+				if (!turn) {
+					return x;
+				}
+				var y = dy.get.call(this);
+				if (relative) {
+					return turn === -90 ? -y : y;
+				}
+				return turn === -90 ? shortSide - y : y;
+			},
+		});
+		Object.defineProperty(proto, yName, {
+			configurable: true,
+			enumerable: dy.enumerable,
+			get: function () {
+				var y = dy.get.call(this);
+				if (!turn) {
+					return y;
+				}
+				var x = dx.get.call(this);
+				if (relative) {
+					return turn === -90 ? x : -x;
+				}
+				return turn === -90 ? x : longSide - x;
+			},
+		});
+	}
+	patchPoint(window.MouseEvent && MouseEvent.prototype, 'clientX', 'clientY', false);
+	patchPoint(window.MouseEvent && MouseEvent.prototype, 'movementX', 'movementY', true);
+	patchPoint(window.Touch && Touch.prototype, 'clientX', 'clientY', false);
+
+	window.addEventListener('resize', update);
+	window.addEventListener('orientationchange', function () {
+		update();
+		window.setTimeout(update, 250);
+	});
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', update);
+	}
+	update();
+	// Catch the canvas once it exists and any late toolbar/viewport changes.
+	window.setInterval(update, 500);
+})();
+
+</script>
+<script id="TREEHOUSE_AUDIO_UNLOCK">
+/* Treehouse Survival - Web/iOS AudioContext unlock bridge.
+ * Godot 4.7 keeps GodotAudio inside the WASM module closure, so GDScript cannot
+ * see GodotAudio.ctx. This captures the real AudioContext at construction time
+ * and resumes it (plus a silent buffer/oscillator kick) synchronously on the
+ * first real touch/pointer gesture, before Godot consumes the event.
+ * iPhone Chrome is WKWebView: resume must stay inside the user-gesture stack.
+ */
+(function () {
+	if (window.__treehouseAudioBridge) {
+		return;
+	}
+	window.__treehouseAudioBridge = true;
+	window.__treehouseAudioCtx = null;
+	window.__treehouseAudioUnlocked = false;
+
+	function capture(ctx) {
+		if (ctx && typeof ctx.resume === 'function') {
+			window.__treehouseAudioCtx = ctx;
+		}
+	}
+
+	function patchConstructor(name) {
+		var Orig = window[name];
+		if (!Orig || Orig.__treehouseCtorPatched) {
+			return;
+		}
+		function Wrapped(options) {
+			var ctx = new Orig(options);
+			capture(ctx);
+			return ctx;
+		}
+		Wrapped.prototype = Orig.prototype;
+		try {
+			Object.setPrototypeOf(Wrapped, Orig);
+		} catch (e) {}
+		Wrapped.__treehouseCtorPatched = true;
+		Orig.__treehouseCtorPatched = true;
+		window[name] = Wrapped;
+	}
+
+	function patchPrototype(name) {
+		var Ctor = window[name];
+		if (!Ctor || !Ctor.prototype || Ctor.prototype.__treehouseProtoPatched) {
+			return;
+		}
+		var Proto = Ctor.prototype;
+		['resume', 'createBufferSource', 'createGain', 'createBuffer', 'createOscillator', 'decodeAudioData'].forEach(function (method) {
+			var orig = Proto[method];
+			if (typeof orig !== 'function') {
+				return;
+			}
+			Proto[method] = function () {
+				capture(this);
+				return orig.apply(this, arguments);
+			};
+		});
+		Proto.__treehouseProtoPatched = true;
+	}
+
+	patchConstructor('AudioContext');
+	patchConstructor('webkitAudioContext');
+	patchPrototype('AudioContext');
+	patchPrototype('webkitAudioContext');
+
+	// Godot starts every sound only after its position worklet module loads and
+	// its worklet node is built. If either fails or stalls (seen on iOS WebKit),
+	// nothing ever plays. Let the load settle within 2 s whatever happens, and
+	// stand in a silent node for the position reporter; only playback-position
+	// readouts lose precision.
+	window.__treehouseWorklet = 'none';
+	window.__treehouseAudioStarts = 0;
+	window.__treehouseLongStarts = 0;
+	window.__treehouseLongCut = 0;
+	window.__treehouseAudioErrors = 0;
+	window.__treehouseAudioLastError = '';
+	function noteAudioError(text) {
+		window.__treehouseAudioErrors++;
+		window.__treehouseAudioLastError = String(text).replace(/\s+/g, ' ').slice(0, 70);
+	}
+	// Godot reports Web Audio trouble through console.error; keep the last one.
+	var consoleError = console.error;
+	console.error = function () {
+		try {
+			var text = Array.prototype.join.call(arguments, ' ');
+			if (/audio|sample|worklet|buffer/i.test(text)) {
+				noteAudioError(text);
+			}
+		} catch (e) {}
+		return consoleError.apply(console, arguments);
+	};
+	window.addEventListener('unhandledrejection', function (event) {
+		var text = event && event.reason ? (event.reason.message || event.reason) : '';
+		if (/audio|sample|worklet|buffer/i.test(String(text))) {
+			noteAudioError('rejected ' + text);
+		}
+	});
+	['AudioContext', 'webkitAudioContext'].forEach(function (name) {
+		var Ctor = window[name];
+		if (!Ctor || !Ctor.prototype || Ctor.prototype.__treehouseBufferWatch || typeof Ctor.prototype.createBuffer !== 'function') {
+			return;
+		}
+		var createBuffer = Ctor.prototype.createBuffer;
+		Ctor.prototype.createBuffer = function () {
+			try {
+				return createBuffer.apply(this, arguments);
+			} catch (e) {
+				noteAudioError('createBuffer ' + (e && e.name) + ' ' + arguments[1] + ' frames');
+				throw e;
+			}
+		};
+		Ctor.prototype.__treehouseBufferWatch = true;
+	});
+	// Godot's no-threads Web build runs two AudioWorklets: a mixer wired to the
+	// speakers (unused here: every sound plays as a sample) and a position
+	// reporter that every sound waits for and connects through. On iPhone
+	// (WebKit) loading them hung, and once they loaded all output went silent
+	// while the context still said "running". So on Apple WebKit no worklet is
+	// loaded: the mixer gets a silent stand-in and the reporter a stand-in that
+	// reports time from the clock. Elsewhere the reporter is the same processor
+	// throttled to ~11 messages/s per sound (Godot's posts ~344).
+	var ua = navigator.userAgent || '';
+	var appleWebKit = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) ||
+		(/Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR|Firefox|Android/.test(ua));
+	window.__treehouseAppleWebKit = appleWebKit;
+	var THROTTLED_POSITION = "class P extends AudioWorkletProcessor{" +
+		"static get parameterDescriptors(){return [{name:'reset',defaultValue:0,minValue:0,maxValue:1,automationRate:'k-rate'}];}" +
+		"constructor(...a){super(...a);this.position=0;this.blocks=0;}" +
+		"process(inputs,outputs,parameters){if(parameters['reset'][0]>0){this.position=0;this.blocks=31;}" +
+		"if(inputs.length>0&&inputs[0].length>0){this.position+=inputs[0][0].length;" +
+		"if(++this.blocks>=32){this.blocks=0;this.port.postMessage({type:'position',data:this.position});}}return true;}}" +
+		"registerProcessor('godot-position-reporting-processor',P);";
+	if (window.AudioWorklet && AudioWorklet.prototype && !AudioWorklet.prototype.__treehouseSafe) {
+		var addModule = AudioWorklet.prototype.addModule;
+		AudioWorklet.prototype.addModule = function (url) {
+			if (appleWebKit) {
+				window.__treehouseWorklet = 'off';
+				return Promise.resolve();
+			}
+			var loading;
+			var args = arguments;
+			try {
+				if (/position\.worklet\.js/.test(String(url)) && window.Blob && window.URL) {
+					args = [URL.createObjectURL(new Blob([THROTTLED_POSITION], { type: 'application/javascript' }))];
+				}
+			} catch (e0) {}
+			try {
+				loading = addModule.apply(this, args);
+			} catch (e) {
+				loading = Promise.reject(e);
+			}
+			window.__treehouseWorklet = 'pending';
+			return new Promise(function (resolve) {
+				var settled = false;
+				function done(status) {
+					if (!settled) {
+						settled = true;
+						window.__treehouseWorklet = status;
+						resolve();
+					}
+				}
+				Promise.resolve(loading).then(function () {
+					window.__treehouseWorklet = 'ok';
+					done('ok');
+				}, function () {
+					window.__treehouseWorklet = 'failed';
+					done('failed');
+				});
+				window.setTimeout(function () { done('slow'); }, 2000);
+			});
+		};
+		AudioWorklet.prototype.__treehouseSafe = true;
+	}
+	function standIn(ctx, name) {
+		// A silent node with the port and 'reset' parameter Godot expects.
+		var stub = ctx.createGain();
+		var startedAt = null;
+		var port = { onmessage: null, postMessage: function () {}, close: function () {} };
+		var reset = {
+			value: 0,
+			setValueAtTime: function (value, time) {
+				if (value > 0) {
+					startedAt = time;
+				}
+				return reset;
+			},
+		};
+		stub.port = port;
+		stub.parameters = { get: function () { return reset; } };
+		if (name === 'godot-position-reporting-processor') {
+			// Report position from the context clock, 4 times a second, while
+			// a sound holds this reporter (Godot clears onmessage on release).
+			window.setInterval(function () {
+				if (startedAt === null || typeof port.onmessage !== 'function') {
+					return;
+				}
+				var frames = Math.max(0, (ctx.currentTime - startedAt) * ctx.sampleRate);
+				try {
+					port.onmessage({ data: { type: 'position', data: Math.floor(frames) } });
+				} catch (e) {}
+			}, 250);
+		}
+		return stub;
+	}
+	if (window.AudioWorkletNode && !window.AudioWorkletNode.__treehouseSafe) {
+		var OrigNode = window.AudioWorkletNode;
+		var godotNodes = ['godot-position-reporting-processor', 'godot-processor'];
+		var SafeNode = function (ctx, name, options) {
+			if (appleWebKit && godotNodes.indexOf(name) >= 0) {
+				return standIn(ctx, name);
+			}
+			try {
+				return new OrigNode(ctx, name, options);
+			} catch (e) {
+				if (name !== 'godot-position-reporting-processor') {
+					throw e;
+				}
+				window.__treehouseWorklet = 'stub';
+				return standIn(ctx, name);
+			}
+		};
+		SafeNode.prototype = OrigNode.prototype;
+		try {
+			Object.setPrototypeOf(SafeNode, OrigNode);
+		} catch (e3) {}
+		SafeNode.__treehouseSafe = true;
+		window.AudioWorkletNode = SafeNode;
+	}
+	if (window.AudioBufferSourceNode && !AudioBufferSourceNode.prototype.__treehouseCounted) {
+		var startSource = AudioBufferSourceNode.prototype.start;
+		AudioBufferSourceNode.prototype.start = function () {
+			if (!this.__treehouseSilent) {
+				window.__treehouseAudioStarts++;
+				if (this.buffer && this.buffer.duration > 5) {
+					window.__treehouseLongStarts++;
+					// A long bed that ends within 2 s was cut off, not finished.
+					var began = Date.now();
+					this.addEventListener('ended', function () {
+						if (Date.now() - began < 2000) {
+							window.__treehouseLongCut++;
+						}
+					});
+				}
+			}
+			try {
+				return startSource.apply(this, arguments);
+			} catch (e) {
+				noteAudioError('start ' + (e && e.name));
+				throw e;
+			}
+		};
+		AudioBufferSourceNode.prototype.__treehouseCounted = true;
+	}
+
+	function silentKick(ctx) {
+		try {
+			var rate = ctx.sampleRate || 44100;
+			var frames = Math.max(1, Math.floor(rate * 0.05));
+			var buffer = ctx.createBuffer(1, frames, rate);
+			var source = ctx.createBufferSource();
+			source.__treehouseSilent = true;
+			source.buffer = buffer;
+			source.connect(ctx.destination);
+			source.start(0);
+		} catch (e) {}
+		try {
+			var osc = ctx.createOscillator();
+			var gain = ctx.createGain();
+			gain.gain.value = 0.0001;
+			osc.connect(gain);
+			gain.connect(ctx.destination);
+			osc.start(0);
+			osc.stop(ctx.currentTime + 0.05);
+		} catch (e2) {}
+	}
+
+	// iPhone mutes Web Audio while the ring/silent switch is on silent. A game
+	// should play like media: iOS 17+ exposes audioSession for that; older iOS
+	// needs a looping (silent) media element to hold the playback session.
+	function playbackSession() {
+		try {
+			if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+				navigator.audioSession.type = 'playback';
+			}
+			return !!navigator.audioSession;
+		} catch (e) {
+			return false;
+		}
+	}
+	playbackSession();
+
+	function htmlAudioKick() {
+		if (playbackSession()) {
+			return;
+		}
+		try {
+			var a = window.__treehouseHtmlAudio;
+			if (!a) {
+				a = new Audio();
+				a.setAttribute('playsinline', 'playsinline');
+				a.setAttribute('x-webkit-airplay', 'deny');
+				a.preload = 'auto';
+				a.loop = true;
+				a.src = 'data:audio/wav;base64,UklGRsQPAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YaAPAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+				window.__treehouseHtmlAudio = a;
+			}
+			if (!a.paused) {
+				return;
+			}
+			var play = a.play();
+			if (play && typeof play.catch === 'function') {
+				play.catch(function () {});
+			}
+		} catch (e) {}
+	}
+
+	window.__treehouseUnlockAudio = function () {
+		htmlAudioKick();
+		var ctx = window.__treehouseAudioCtx;
+		if (!ctx) {
+			return 'missing';
+		}
+		try {
+			if (ctx.state !== 'running' && typeof ctx.resume === 'function') {
+				var pending = ctx.resume();
+				if (pending && typeof pending.then === 'function') {
+					pending.then(function () {
+						silentKick(ctx);
+						if (ctx.state === 'running') {
+							window.__treehouseAudioUnlocked = true;
+						}
+					}).catch(function () {});
+				}
+			}
+			// Must run in the same synchronous gesture stack (iOS WKWebView).
+			silentKick(ctx);
+			if (ctx.state === 'running') {
+				window.__treehouseAudioUnlocked = true;
+			}
+		} catch (e) {
+			return 'error';
+		}
+		return ctx.state || 'unknown';
+	};
+
+	document.addEventListener('visibilitychange', function () {
+		if (document.visibilityState === 'visible') {
+			playbackSession();
+		}
+	});
+
+	window.__treehouseAudioState = function () {
+		var ctx = window.__treehouseAudioCtx;
+		return ctx ? (ctx.state || 'unknown') : 'missing';
+	};
+
+	// One line for the in-game sound check: context|worklet|sounds started|rate|session.
+	window.__treehouseAudioReport = function () {
+		var ctx = window.__treehouseAudioCtx;
+		var session = '';
+		try {
+			session = navigator.audioSession ? navigator.audioSession.type + '/' + navigator.audioSession.state : 'none';
+		} catch (e) {
+			session = 'error';
+		}
+		return [
+			ctx ? ctx.state : 'missing',
+			window.__treehouseWorklet,
+			window.__treehouseAudioStarts + ' plays',
+			window.__treehouseLongStarts + ' long',
+			window.__treehouseLongCut + ' cut',
+			(ctx ? ctx.sampleRate : 0) + 'Hz',
+			session,
+			window.__treehouseAudioErrors + ' err',
+			window.__treehouseAudioLastError,
+		].join('|');
+	};
+
+	function unlockFromDomGesture() {
+		if (typeof window.__treehouseUnlockAudio === 'function') {
+			window.__treehouseUnlockAudio();
+		}
+	}
+
+	// Capture phase on document so unlock runs before Godot/canvas eats the event.
+	['touchstart', 'touchend', 'pointerdown', 'mousedown', 'keydown'].forEach(function (type) {
+		document.addEventListener(type, unlockFromDomGesture, { capture: true, passive: true });
+	});
+
+	function bindCanvas() {
+		var canvas = document.getElementById('canvas');
+		if (!canvas || canvas.__treehouseAudioBound) {
+			return;
+		}
+		canvas.__treehouseAudioBound = true;
+		['touchstart', 'touchend', 'pointerdown', 'mousedown'].forEach(function (type) {
+			canvas.addEventListener(type, unlockFromDomGesture, { capture: true, passive: true });
+		});
+	}
+
+	bindCanvas();
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', bindCanvas);
+	}
+	var canvasWatch = window.setInterval(function () {
+		bindCanvas();
+		var canvas = document.getElementById('canvas');
+		if (canvas && canvas.__treehouseAudioBound) {
+			window.clearInterval(canvasWatch);
+		}
+	}, 250);
+})();
+
+</script>
+<script id="TREEHOUSE_RELOAD">
+/* Called before Engine is constructed. Godot flushes IndexedDB on normal exit. */
+window.__treehouseConfigureReload = function (config) {
+	var previousExit = config.onExit;
+	window.__treehouseReloadInstalled = true;
+	window.__treehouseReloadPending = false;
+	config.onExit = function (code) {
+		if (window.__treehouseReloadPending && code === 0) {
+			var url = new URL(window.location.href);
+			url.searchParams.set('t', Date.now().toString());
+			window.location.replace(url.toString());
+			return;
+		}
+		if (typeof previousExit === 'function') previousExit(code);
+	};
+};
+
+</script>
+</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="treehouse-202610092022.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="treehouse-202610092022.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"treehouse-202610092022","experimentalVK":false,"fileSizes":{"treehouse-202610092022.pck":8731648,"treehouse-202610092022.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+window.__treehouseConfigureReload(GODOT_CONFIG);
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
+
